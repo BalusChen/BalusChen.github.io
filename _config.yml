@@ -1,11 +1,11 @@
-title: Hexo
+title: Laputa
 subtitle: ''
 description: ''
 keywords: null
-author: John Doe
+author: Jianyong Chen
 language: en
 timezone: ''
-url: 'http://example.com'
+url: 'http://laputa.world'
 root: /
 permalink: ':year/:month/:day/:title/'
 permalink_defaults: null
