@@ -1,6 +1,6 @@
 ---
-title: redis-基础数据结构: HyperLogLog（二）源码与设计
-date: 2020-10-02 11:26:44
+title: redis-基础数据结构-hyperloglog（二）源码与设计
+date: 2020-10-03 11:26:44
 tags:
     - redis
 ---
