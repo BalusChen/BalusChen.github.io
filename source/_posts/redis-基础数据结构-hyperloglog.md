@@ -11,7 +11,7 @@ tags:
 
 从伯努利实验中我们可以通过连续反面的次数来估算抛掷次数，而 HyperLogLog 正是利用的这个原理来实现诸如UV计数等功能。那么如何将UV计数和伯努利实验联系起来呢？HLL 适用于字符串，redis 将其哈希，得到二进制哈希值的0、1就可以和硬币的正反面对应；通过统计其哈希值连续 0 的个数从而对应连续出现反面的次数
 
-所以按照伯努利实验的思路，我们只需要一个计数器，记录下当前哈希值，每次计算添加元素的哈希值的最低位开始的0的个数，如果比当前的大，就更新这个计数器。但是，从伯努利实验中我们也看到只抛一轮实验计算得到的结果误差是比较大的，所以会抛多轮并计算其平均值（或者加权平均）进行优化。HLL 也是类似，它用了 16384 个计数器，哈希值的低14位用于确定计数器，高50位用于计算连续0的个数，从而达到平均的效果。
+所以按照伯努利实验的思路，我们只需要一个计数器，记录下当前哈希值，每次计算添加元素时先计算其哈希值，然后从左往右（或者从右往左）计算其连续0的bit的数目，如果比当前计时器的值大，就更新这个计数器。但是，从伯努利实验中我们也看到只抛一轮实验计算得到的结果误差是比较大的，所以会抛多轮并计算其平均值进行优化。HLL 也是类似，它用了 16384 个计数器，哈希值的低14位用于确定计数器，高50位用于计算连续0的个数，从而达到平均的效果。
 
 当使用`PFADD`命令添加一个元素时，首先将该元素哈希为一个 uint64，并且通过哈希值的低14bit定位到它所在的 register，然后计算该哈希值从15位开始连续为 0 的 bit 的个数，如果新元素的连续 0bit 个数大于该 register，那么就更新 register。
 
@@ -40,7 +40,6 @@ int hllPatLen(unsigned char *ele, size_t elesize, long *regp) {
 这里有几点需要注意：
 
 - 终结连续 0bit 串的 1 也需要被包含进来，比如 001，其计数值为 3；
--
 
 ##  数据结构
 
@@ -61,11 +60,11 @@ struct hllhdr {
 - card：即 cardinality，用以缓存数目，最高位为 1 表示缓存是有效的，此时`pfcount`命令直接拿这个数值，否则就需要重新计算
 - registers：存储着所有的计数器
 
-`hllhdr`中的`registers`柔性数组一共有 16384 个 register，每个 register 占 6bit。为什么是 6bit 呢？因为一个`int64`最多只有 64 个 bit 为 0，用 6bit 就可以表示了。
+`hllhdr`中的`registers`柔性数组一共有 16384 个 register，每个 register 占 6bit。为什么是 6bit 呢？因为一个`uint64`最多只有 64 个 bit 为 0，用 6bit 就可以表示了。
 
 ## 三种编码方式
 
-按照`hllhdr`的布局，一个 HLL 初始条件下就得占用 4+1+3+8+(16384*6/8)= 12304byte，也就是差不多 12KB，在 redis 中这被称为 dense 编码；而很多时候我们计数可能没有那么多，其中很多 register 都是 0，这个时候也占用 12KB 有些浪费；所以对于大部分 register 为 0 的情况，redis 提出了 sparse 编码；此外，在`PFMERGE`命令的实现中，还使用到了另外一种编码方式。
+按照`hllhdr`的布局，一个 HLL 初始条件下就得占用 4+1+3+8+(16384*6/8)= 12304byte，也就是差不多 12KB，在 redis 中这被称为 dense 编码；而很多时候元素可能没有那么多，导致其中大部分 register 都是 0，这个时候也占用 12KB 有些浪费；所以对于大部分 register 为 0 的情况，redis 提出了 sparse 编码；此外，在`PFCOUNT`命令的实现中，还使用到了另外一种编码方式。
 
 ### sparse 编码
 
@@ -97,7 +96,7 @@ struct hllhdr {
 
 这样有哪些限制呢？
 
-- 可以看到 VAL 指令能表示的 register 的值最大为 32，所以 sparse 形态的 hyperloglog 也要求所有 register 值最大为 32，否则就需要转为 dense 形态
+- VAL 指令能表示的 register 的值最大为 32，所以 sparse 形态的 hyperloglog 也要求所有 register 值最大为 32，否则就需要转为 dense 形态
 - VAL 能表示的具有相同值的 register 的个数最多为 4，这我感觉也是经过考量的，因为用 2bit 表示 3 种类型，所以有一种类型可以用一个 bit 表示即可，多出来的 bit 可以作为计数使用（比如 1vvvvvxxx 这样可以最多以及最大表示连续 8 个值为 16 的 register
 
 #### sparse 升级到 dense
@@ -151,7 +150,7 @@ int hllSparseToDense(robj *o) {
 }
 ```
 
-代码比较简单，主要是注意错误处理，防止内存越界，其中类似的 for 循环在 sparse 编码相关的多个函数中都使用到了。
+代码比较简单，毕竟只有 VAL 类型的 opcode 需要拷贝，其余两种只需要计算其长度并跳过即可；其他的主要是注意错误处理，防止内存越界；其中类似的 for 循环在 sparse 编码相关的多个函数中都使用到了。
 
 #### sparse 编码下如何存取数据
 
@@ -187,7 +186,7 @@ int hllSparseToDense(robj *o) {
     if (next >= end) next = NULL;
 ```
 
-> 我感觉这样的循环是最难控制的，以及如何确定循环结束时各个变量的状态，原来看《算法导论》的时候学到"循环不变式"方法用的也不是很顺手
+> 感觉这样的循环是最难控制的，以及如何确定循环结束时各个变量的状态，原来看《算法导论》的时候学到"循环不变式"方法用的也不是很顺手
 
 当循环结束，`p`指向第 index 个 register 所在的 opcode，并且由`is_zero`、`is_xzero`和`is_val`指明该 opcode 的类型，first 指向的是该 opcode 包含的第一个 register 的下标，next 和 prev 分别表示前一个和后一个 opcode（当`p`是第一个或者最后一个 opcode 的话，对于的`prev`和`next`可能为`NULL`）
 
@@ -241,9 +240,7 @@ int hllSparseToDense(robj *o) {
 - opcode 从长度为 1 的 ZERO 更新为长度为 1 的 VAL，从而可以和其相邻 opcode 合并
 - opcode 从长度为 1 的 VAL 更新为长度仍为 1，但是值更大的 VAL，从而可以与其相邻的 opcode 合并
 
-![redis-hll-merge-adjacent-opcode](images/inpost/redis/hll/redis-hll-merge-adjacent-opcode.png)
-
-
+![redis-hll-merge-adjacent-opcode](/images/inpost/redis/hll/redis-hll-merge-adjacent-opcode.png)
 
 ```c
 updated:
@@ -294,7 +291,7 @@ dense 编码即使用完整的 16384 个 register。
 
 但是我们存取数据的最小单元是 byte，即 8bit，而每个 register 只有 6bit，那么这 6bit 在 byte 中是怎样的摆放方式呢？
 
-![redis-registers](images/inpost/redis/hll/redis-registers.png)
+![redis-registers](/images/inpost/redis/hll/redis-registers.png)
 
 那怎么取出来呢：
 
@@ -316,7 +313,7 @@ dense 编码即使用完整的 16384 个 register。
 
 用图总结大概就是这样：
 
-![redis-register-get](images/inpost/redis/hll/redis-register-get.png)
+![redis-register-get](/images/inpost/redis/hll/redis-register-get.png)
 
 写入的过程比读取更加麻烦一些：
 
@@ -447,11 +444,25 @@ void pfcountCommand(client *c) {
 
 而对于统计单个 hll object 的情况，首先检查其 header 中的缓存是否有效，如果仍有效就直接使用，否则需要重新计算估算值并更新缓存（这也是为什么使用`lookupKeyWrite`而不是`lookupKeyRead`的原因）。
 
+## 总结
+
+- HLL 整体使用的是伯努利实验模型，在此基础上使用了调和平均以降低误差，并且在计算过程中进行了优化
+- HLL 一共有3种编码方式
+  - sparse 适用于 hll object 刚刚创建的时候，此时大部分 register 值为 0
+  - 当 sparse 编码中有 register 的值超过 32，或者使用的内存超出阈值时，需要被转换为 dense 编码
+  - raw 编码只在`PFCOUNT`命令统计多个 hll object 时使用
+
 ## 一些思考
 
 ### 编码与数学
 
+统计UV，用传统的办法可能就是用一个 SET 来达到去重的目的，但是这样的话我们还得将元素实际存储进去，而很多情况下我们对实际元素是什么并不感兴趣，那么元素数目太多的情况下使用这类方法将占用大量内存；但是从数学角度去看，这个问题可以被抽象、归纳至伯努利实验这个数学模型当中去。所以可以合理地推断，当从纯粹的编程角度去看没有优雅的解决办法时，说不定借鉴其他领域的一些思想从而得到很好的解决；这也提醒我们，Computer Science并不是一门孤岛学科，至少在将其掌握得好这一点上仅仅学习它本身是不够的，能够将数学等学科融会贯通将会让我们在 CS 这条路上可以走的更远。
+
+在 Computer Science 中，我觉得最难的一点是**抽象**；如何将某个具体问题抽象，从而发现规律，洞察其本质。
+
 ### 优化
+
+虽说“过早的优化是罪恶之源”，但倘若优化得当，对整个系统的好处是显而易见的的。Redis 本身就是一个内存型数据结构，在内存使用上进行优化无疑是重中之重；但是从什么视角切入、以什么方式进行优化、如何证明优化产生了证明效果...这些都值得细细思考。此外，在存储系统的设计与实现中也存在着一些常见的优化技巧，在编码过程中需要想起并思考是否适用。
 
 ## 参考
 
@@ -460,3 +471,5 @@ void pfcountCommand(client *c) {
 [HyperLogLog 算法的原理讲解以及 Redis 是如何应用它的](https://juejin.im/post/6844903785744056333)
 
 [Reids(4)——神奇的HyperLoglog解决统计问题](https://www.cnblogs.com/wmyskxz/p/12396393.html)
+
+[如何理解与应用调和平均数?](https://www.zhihu.com/question/23096098)
