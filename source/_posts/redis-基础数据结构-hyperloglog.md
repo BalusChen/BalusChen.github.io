@@ -1,6 +1,6 @@
 ---
 title: redis-基础数据结构: HyperLogLog（二）源码与设计
-date: 2020-09-12 16:22:44
+date: 2020-10-02 11:26:44
 tags:
     - redis
 ---
@@ -40,7 +40,7 @@ int hllPatLen(unsigned char *ele, size_t elesize, long *regp) {
 这里有几点需要注意：
 
 - 终结连续 0bit 串的 1 也需要被包含进来，比如 001，其计数值为 3；
-- 
+-
 
 ##  数据结构
 
@@ -241,7 +241,7 @@ int hllSparseToDense(robj *o) {
 - opcode 从长度为 1 的 ZERO 更新为长度为 1 的 VAL，从而可以和其相邻 opcode 合并
 - opcode 从长度为 1 的 VAL 更新为长度仍为 1，但是值更大的 VAL，从而可以与其相邻的 opcode 合并
 
-![redis-hll-merge-adjacent-opcode](/Users/balus/Workspace/iTemp/images/redis-hll-merge-adjacent-opcode.png)
+![redis-hll-merge-adjacent-opcode](images/inpost/redis/hll/redis-hll-merge-adjacent-opcode.png)
 
 
 
@@ -294,7 +294,7 @@ dense 编码即使用完整的 16384 个 register。
 
 但是我们存取数据的最小单元是 byte，即 8bit，而每个 register 只有 6bit，那么这 6bit 在 byte 中是怎样的摆放方式呢？
 
-![redis-registers](/Users/balus/Workspace/iTemp/images/redis-registers.png)
+![redis-registers](images/inpost/redis/hll/redis-registers.png)
 
 那怎么取出来呢：
 
@@ -316,7 +316,7 @@ dense 编码即使用完整的 16384 个 register。
 
 用图总结大概就是这样：
 
-![redis-register-get](/Users/balus/Workspace/iTemp/images/redis-register-get.png)
+![redis-register-get](images/inpost/redis/hll/redis-register-get.png)
 
 写入的过程比读取更加麻烦一些：
 
