@@ -1,11 +1,9 @@
 ---
-title: redis-基础数据结构-hyperloglog
+title: redis-基础数据结构: HyperLogLog（二）源码与设计
 date: 2020-09-12 16:22:44
 tags:
     - redis
 ---
-
-# redis 基础数据结构：HyperLogLog（二）源码剖析
 
 [上一篇文章](其实还没有开始写.com)介绍了 HyperLogLog 的工作原理，这里介绍一下 redis 中的具体实现
 
