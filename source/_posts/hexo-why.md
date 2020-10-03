@@ -41,7 +41,7 @@ deploy:
 
 但是后面在关联域名的时候就没法用了，在 DNSpod 上配置时需要配置：
 
-![dsnpod](images/inpost/dnspod.png)
+![dsnpod](/images/inpost/dnspod.png)
 
 其中的记录值只能是一个简单的域名，不能带有 path，他表示当访问 baluschen.github.io 时，会跳转至 laputa.world，但是我没有配置域名之前访问 baluschen.github.io 就是 404，所以后面还是把它乖乖改回标准格式了。
 
@@ -106,9 +106,9 @@ fatal: Could not read from remote repository.
 
 在 _config.yml 中指定 logo 等图标时，都是像`/img/logo.png`这样指定 img 目录下面的文件，我搜索了下这是 public 目录下面的一个子目录，但是 public 目录在 gitignore 的，即不会上传至 github。可以看看`hexo generate`后生成的数据：
 
-![gh-pages](images/inpost/gh-pages.png)
+![gh-pages](/images/inpost/gh-pages.png)
 
-可以看到出 source 目录下除下划线开头的文件外其它文件都被放在了根目录，所以我们只需要在 source 目录下新建一个 images 目录就可以在 Markdown 文件中直接以`/images/xxx.png`的方式引用了。
+可以看到出 source 目录下除下划线开头的文件外其它文件都被放在了根目录，所以我们只需要在 source 目录下新建一个 images 目录就可以在 Markdown 文件中直接以`/images/xxx.png`的方式引用了（注意是以绝对路径引用，使用相对路径`images/xxx.png`的话，在首页可以看到图片，但是进入blog详情则无法显示）。
 
 > 至于`hexo generate`命令生成的数据为什么是这样的，还得 RTFM
 
